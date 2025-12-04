@@ -14,7 +14,7 @@
 
 const express = require('express');
 const cors = require('cors');
-const nodemailer = require('nodemailer');
+// Usar fetch nativo do Node (Node 18+)
 const { google } = require('googleapis');
 const path = require('path');
 const fs = require('fs');
@@ -129,30 +129,38 @@ async function saveToSheets(inscricao, tipo = 'confirmada') {
 }
 
 // ========================================
-// CONFIGURAÇÃO DE E-MAIL
+// CONFIGURAÇÃO DE E-MAIL (BREVO API HTTP)
 // ========================================
 
-const SMTP_PORT = parseInt(process.env.SMTP_PORT || '587');
-const SMTP_SECURE = (process.env.SMTP_SECURE
-  ? String(process.env.SMTP_SECURE).toLowerCase() === 'true'
-  : (process.env.SMTP_PORT == '465'));
+const BREVO_API_KEY = process.env.BREVO_API_KEY || '';
+const EMAIL_SENDER_NAME = process.env.EMAIL_SENDER_NAME || 'Wagner Borges - Eventos';
 
-const transporter = nodemailer.createTransport({
-  host: 'smtp-relay.brevo.com',
-  port: 587,
-  secure: false,                    // obrigatório na 587
-  auth: {
-    user: '9d5bab001@smtp-brevo.com',     // ← seu login do Brevo
-    pass: 'RpmqUXhc1HTnkFbz',             // ← sua senha do Brevo
-  },
-  tls: {
-    rejectUnauthorized: false       // essencial na Render gratuita
-  },
-  // ←←←← AQUI ESTÃO AS LINHAS QUE RESOLVEM O TIMEOUT ←←←←
-  connectionTimeout: 60000,    // 60 segundos (em vez dos 10 segundos padrão)
-  greetingTimeout: 60000,
-  socketTimeout: 60000,
-});
+async function brevoSendEmail({ toEmail, toName, subject, html }) {
+  if (!BREVO_API_KEY) {
+    throw new Error('BREVO_API_KEY ausente nas variáveis de ambiente');
+  }
+  const body = {
+    sender: { email: CONFIG.EMAIL_FROM, name: EMAIL_SENDER_NAME },
+    to: [{ email: toEmail, name: toName || toEmail }],
+    subject,
+    htmlContent: html,
+  };
+  const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'api-key': BREVO_API_KEY,
+    },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg = (data && data.message) || res.statusText;
+    const details = (data && JSON.stringify(data)) || '';
+    throw new Error(`Brevo erro ${res.status}: ${msg} ${details}`);
+  }
+  return data;
+}
 
 /**
  * Enviar e-mail de confirmação
@@ -294,16 +302,15 @@ async function sendConfirmationEmail(inscricao, tipo = 'confirmada') {
   `;
 
   try {
-    await transporter.sendMail({
-      from: `"KOI Editora" <${CONFIG.EMAIL_FROM}>`,
-      to: inscricao.email,
+    await brevoSendEmail({
+      toEmail: inscricao.email,
+      toName: inscricao.nome,
       subject,
       html: htmlContent,
     });
-    
-    console.log(`✅ E-mail enviado para: ${inscricao.email}`);
+    console.log(`✅ E-mail enviado (Brevo) para: ${inscricao.email}`);
   } catch (error) {
-    console.error('❌ Erro ao enviar e-mail:', error.message);
+    console.error('❌ Erro ao enviar e-mail via Brevo:', error.message);
   }
 }
 
@@ -500,28 +507,24 @@ app.post('/api/test-email', async (req, res) => {
   }
 
   try {
-    await transporter.sendMail({
-      from: `KOI Editora <${CONFIG.EMAIL_FROM}>`,
-      to,
+    await brevoSendEmail({
+      toEmail: to,
+      toName: to,
       subject: subject || 'Teste de E-mail - KOI Editora',
       html: `
         <div style="font-family:Arial,sans-serif;padding:20px">
           <h2 style="color:#4B0082;margin:0 0 10px">✅ E-mail de Teste</h2>
-          <p>Este é um e-mail de teste enviado pelo backend hospedado na Render.</p>
-          <p><strong>Servidor SMTP:</strong> ${process.env.SMTP_HOST}:${process.env.SMTP_PORT}</p>
+          <p>Envio de teste via Brevo API (HTTP).</p>
           <p><strong>Remetente:</strong> ${CONFIG.EMAIL_FROM}</p>
         </div>
       `,
     });
-
-    return res.json({ success: true });
+    return res.json({ success: true, provider: 'Brevo' });
   } catch (error) {
-    console.error('❌ Erro ao enviar e-mail de teste:', error.message);
+    console.error('❌ Erro ao enviar e-mail de teste (Brevo):', error.message);
     return res.status(500).json({
       success: false,
       error: error.message,
-      code: error.code,
-      command: error.command,
       stack: error.stack,
     });
   }
@@ -530,7 +533,7 @@ app.post('/api/test-email', async (req, res) => {
 /**
  * GET /api/test-smtp - Verificar configuração SMTP (protegido)
  */
-app.get('/api/test-smtp', async (req, res) => {
+app.get('/api/test-email-provider', async (req, res) => {
   const token = req.headers.authorization;
   const expectedToken = `Bearer ${process.env.ADMIN_TOKEN}`;
 
@@ -538,38 +541,20 @@ app.get('/api/test-smtp', async (req, res) => {
     return res.status(401).json({ success: false, error: 'Não autorizado' });
   }
 
-  const smtpInfo = {
-    host: process.env.SMTP_HOST,
-    port: process.env.SMTP_PORT,
-    secure: (process.env.SMTP_SECURE
-      ? String(process.env.SMTP_SECURE).toLowerCase() === 'true'
-      : (process.env.SMTP_PORT == '465')),
-    user: process.env.SMTP_USER,
-    from: CONFIG.EMAIL_FROM,
-    debug: String(process.env.SMTP_DEBUG || '').toLowerCase() === 'true',
-    pool: String(process.env.SMTP_POOL || '').toLowerCase() === 'true',
-    authMethod: process.env.SMTP_AUTH_METHOD || undefined,
-  };
-
   try {
-    const verifyResult = await transporter.verify();
-    return res.json({ success: true, verify: verifyResult, smtp: smtpInfo });
+    if (!BREVO_API_KEY) {
+      return res.status(400).json({ success: false, error: 'BREVO_API_KEY ausente' });
+    }
+    return res.json({ success: true, provider: 'Brevo', sender: { email: CONFIG.EMAIL_FROM } });
   } catch (error) {
-    return res.status(500).json({
-      success: false,
-      error: error.message,
-      code: error.code,
-      command: error.command,
-      stack: error.stack,
-      smtp: smtpInfo,
-    });
+    return res.status(500).json({ success: false, error: error.message, stack: error.stack });
   }
 });
 
 /**
  * GET /api/smtp-config - Retorna configuração SMTP resolvida (protegido)
  */
-app.get('/api/smtp-config', (req, res) => {
+app.get('/api/email-config', (req, res) => {
   const token = req.headers.authorization;
   const expectedToken = `Bearer ${process.env.ADMIN_TOKEN}`;
   if (token !== expectedToken) {
@@ -577,17 +562,12 @@ app.get('/api/smtp-config', (req, res) => {
   }
 
   const cfg = {
-    host: process.env.SMTP_HOST,
-    port: process.env.SMTP_PORT,
-    secure: SMTP_SECURE,
-    user: process.env.SMTP_USER,
-    from: CONFIG.EMAIL_FROM,
-    debug: String(process.env.SMTP_DEBUG || '').toLowerCase() === 'true',
-    pool: String(process.env.SMTP_POOL || '').toLowerCase() === 'true',
-    authMethod: process.env.SMTP_AUTH_METHOD || undefined,
-    tlsRejectUnauthorized: !(String(process.env.SMTP_TLS_REJECT_UNAUTHORIZED || '').toLowerCase() === 'false'),
+    provider: 'Brevo',
+    senderEmail: CONFIG.EMAIL_FROM,
+    senderName: EMAIL_SENDER_NAME,
+    hasApiKey: !!BREVO_API_KEY,
   };
-  res.json({ success: true, smtp: cfg });
+  res.json({ success: true, email: cfg });
 });
 
 // ========================================
