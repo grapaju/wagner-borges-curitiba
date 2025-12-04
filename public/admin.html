@@ -375,7 +375,17 @@
   </div>
 
   <script>
-    const API_URL = 'https://wagner-borges-curitiba.onrender.com/api';
+    // Detecta automaticamente a origem quando hospedado na Render
+    const API_URL = (function() {
+      try {
+        const origin = window.location.origin;
+        if (origin && origin.includes('onrender.com')) {
+          return `${origin}/api`;
+        }
+      } catch (_) {}
+      // Fallback para produção pública
+      return 'https://wagner-borges-curitiba.onrender.com/api';
+    })();
     let authToken = '';
 
     // Login
@@ -388,6 +398,8 @@
       }
 
       authToken = `Bearer ${token}`;
+      // Persistir token para manter sessão
+      try { localStorage.setItem('adminToken', authToken); } catch(_) {}
 
       // Testar token
       fetch(`${API_URL}/inscricoes`, {
@@ -400,6 +412,8 @@
           document.getElementById('loginBox').classList.add('hidden');
           document.getElementById('dashboard').classList.remove('hidden');
           loadData();
+          // Iniciar auto-atualização sem deslogar
+          startAutoRefresh();
         } else {
           showError('Token inválido!');
         }
@@ -440,6 +454,19 @@
         }
       } catch (error) {
         console.error('Erro ao carregar dados:', error);
+      }
+    }
+
+    // Auto refresh a cada 15s (pode ajustar)
+    let refreshTimer = null;
+    function startAutoRefresh() {
+      if (refreshTimer) return;
+      refreshTimer = setInterval(loadData, 15000);
+    }
+    function stopAutoRefresh() {
+      if (refreshTimer) {
+        clearInterval(refreshTimer);
+        refreshTimer = null;
       }
     }
 
@@ -547,6 +574,27 @@
         login();
       }
     });
+
+    // Tentar restaurar sessão automaticamente
+    (function restoreSession(){
+      try {
+        const saved = localStorage.getItem('adminToken');
+        if (saved) {
+          authToken = saved;
+          // Testar e entrar direto
+          fetch(`${API_URL}/inscricoes`, { headers: { 'Authorization': authToken } })
+            .then(res => {
+              if (res.ok) {
+                document.getElementById('loginBox').classList.add('hidden');
+                document.getElementById('dashboard').classList.remove('hidden');
+                loadData();
+                startAutoRefresh();
+              }
+            })
+            .catch(()=>{});
+        }
+      } catch(_) {}
+    })();
   </script>
 
 </body>

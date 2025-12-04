@@ -14,7 +14,7 @@
 
 const express = require('express');
 const cors = require('cors');
-const nodemailer = require('nodemailer');
+// Usar fetch nativo do Node (Node 18+)
 const { google } = require('googleapis');
 const path = require('path');
 const fs = require('fs');
@@ -129,18 +129,38 @@ async function saveToSheets(inscricao, tipo = 'confirmada') {
 }
 
 // ========================================
-// CONFIGURAÇÃO DE E-MAIL
+// CONFIGURAÇÃO DE E-MAIL (BREVO API HTTP)
 // ========================================
 
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || 'smtp.gmail.com',
-  port: parseInt(process.env.SMTP_PORT) || 587,
-  secure: process.env.SMTP_PORT == '465', // true para porta 465, false para 587
-  auth: {
-    user: process.env.SMTP_USER || 'seu-email@gmail.com',
-    pass: process.env.SMTP_PASS || 'sua-senha-app',
-  },
-});
+const BREVO_API_KEY = process.env.BREVO_API_KEY || '';
+const EMAIL_SENDER_NAME = process.env.EMAIL_SENDER_NAME || 'Wagner Borges - Eventos';
+
+async function brevoSendEmail({ toEmail, toName, subject, html }) {
+  if (!BREVO_API_KEY) {
+    throw new Error('BREVO_API_KEY ausente nas variáveis de ambiente');
+  }
+  const body = {
+    sender: { email: CONFIG.EMAIL_FROM, name: EMAIL_SENDER_NAME },
+    to: [{ email: toEmail, name: toName || toEmail }],
+    subject,
+    htmlContent: html,
+  };
+  const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'api-key': BREVO_API_KEY,
+    },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg = (data && data.message) || res.statusText;
+    const details = (data && JSON.stringify(data)) || '';
+    throw new Error(`Brevo erro ${res.status}: ${msg} ${details}`);
+  }
+  return data;
+}
 
 /**
  * Enviar e-mail de confirmação
@@ -282,16 +302,15 @@ async function sendConfirmationEmail(inscricao, tipo = 'confirmada') {
   `;
 
   try {
-    await transporter.sendMail({
-      from: `"KOI Editora" <${CONFIG.EMAIL_FROM}>`,
-      to: inscricao.email,
+    await brevoSendEmail({
+      toEmail: inscricao.email,
+      toName: inscricao.nome,
       subject,
       html: htmlContent,
     });
-    
-    console.log(`✅ E-mail enviado para: ${inscricao.email}`);
+    console.log(`✅ E-mail enviado (Brevo) para: ${inscricao.email}`);
   } catch (error) {
-    console.error('❌ Erro ao enviar e-mail:', error.message);
+    console.error('❌ Erro ao enviar e-mail via Brevo:', error.message);
   }
 }
 
@@ -468,6 +487,121 @@ app.post('/api/cancelar', async (req, res) => {
     success: true,
     message: 'Inscrição cancelada com sucesso',
   });
+});
+
+/**
+ * POST /api/test-email - Enviar e-mail de teste (protegido)
+ * Body: { to: "email@destino.com", subject?: string }
+ */
+app.post('/api/test-email', async (req, res) => {
+  const token = req.headers.authorization;
+  const expectedToken = `Bearer ${process.env.ADMIN_TOKEN}`;
+
+  if (token !== expectedToken) {
+    return res.status(401).json({ success: false, error: 'Não autorizado' });
+  }
+
+  const { to, subject } = req.body || {};
+  if (!to) {
+    return res.status(400).json({ success: false, error: 'Campo obrigatório: to' });
+  }
+
+  try {
+    await brevoSendEmail({
+      toEmail: to,
+      toName: to,
+      subject: subject || 'Teste de E-mail - KOI Editora',
+      html: `
+        <div style="font-family:Arial,sans-serif;padding:20px">
+          <h2 style="color:#4B0082;margin:0 0 10px">✅ E-mail de Teste</h2>
+          <p>Envio de teste via Brevo API (HTTP).</p>
+          <p><strong>Remetente:</strong> ${CONFIG.EMAIL_FROM}</p>
+        </div>
+      `,
+    });
+    return res.json({ success: true, provider: 'Brevo' });
+  } catch (error) {
+    console.error('❌ Erro ao enviar e-mail de teste (Brevo):', error.message);
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+      stack: error.stack,
+    });
+  }
+});
+
+/**
+ * GET /api/test-smtp - Verificar configuração SMTP (protegido)
+ */
+app.get('/api/test-email-provider', async (req, res) => {
+  const token = req.headers.authorization;
+  const expectedToken = `Bearer ${process.env.ADMIN_TOKEN}`;
+
+  if (token !== expectedToken) {
+    return res.status(401).json({ success: false, error: 'Não autorizado' });
+  }
+
+  try {
+    if (!BREVO_API_KEY) {
+      return res.status(400).json({ success: false, error: 'BREVO_API_KEY ausente' });
+    }
+    return res.json({ success: true, provider: 'Brevo', sender: { email: CONFIG.EMAIL_FROM } });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message, stack: error.stack });
+  }
+});
+
+/**
+ * GET /api/smtp-config - Retorna configuração SMTP resolvida (protegido)
+ */
+app.get('/api/email-config', (req, res) => {
+  const token = req.headers.authorization;
+  const expectedToken = `Bearer ${process.env.ADMIN_TOKEN}`;
+  if (token !== expectedToken) {
+    return res.status(401).json({ success: false, error: 'Não autorizado' });
+  }
+
+  const cfg = {
+    provider: 'Brevo',
+    senderEmail: CONFIG.EMAIL_FROM,
+    senderName: EMAIL_SENDER_NAME,
+    hasApiKey: !!BREVO_API_KEY,
+    apiKeyPreview: BREVO_API_KEY ? `${BREVO_API_KEY.slice(0, 8)}...(${BREVO_API_KEY.length} chars)` : null,
+  };
+  res.json({ success: true, email: cfg });
+});
+
+/**
+ * GET /api/brevo-account - Diagnóstico da chave Brevo (protegido)
+ * Consulta o endpoint /v3/account da Brevo para validar a API key
+ */
+app.get('/api/brevo-account', async (req, res) => {
+  const token = req.headers.authorization;
+  const expectedToken = `Bearer ${process.env.ADMIN_TOKEN}`;
+  if (token !== expectedToken) {
+    return res.status(401).json({ success: false, error: 'Não autorizado' });
+  }
+
+  if (!BREVO_API_KEY) {
+    return res.status(400).json({ success: false, error: 'BREVO_API_KEY ausente' });
+  }
+
+  try {
+    const resp = await fetch('https://api.brevo.com/v3/account', {
+      headers: { 'api-key': BREVO_API_KEY },
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      return res.status(resp.status).json({ success: false, error: data.message || resp.statusText, details: data });
+    }
+    return res.json({ success: true, account: {
+      plan: data.plan || [],
+      email: data.email || null,
+      companyName: data.companyName || null,
+    }});
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message, stack: error.stack });
+  }
 });
 
 // ========================================
