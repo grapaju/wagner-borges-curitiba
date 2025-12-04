@@ -475,8 +475,18 @@ app.post('/api/cancelar', async (req, res) => {
 // ========================================
 
 // Rota raiz - Landing Page
+// Em ambientes como Render, o backend serve apenas API/Admin
+// Página simples na raiz para evitar erro de arquivo ausente
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, '..', 'index-novo.html'));
+  res.status(200).send(`
+    <html>
+      <head><title>Wagner Borges API</title></head>
+      <body style="font-family: Arial; padding: 20px;">
+        <h1>✅ API do Evento Wagner Borges está online</h1>
+        <p>Use <code>/api/status</code> para checar vagas e <a href="/admin">/admin</a> para o dashboard.</p>
+      </body>
+    </html>
+  `);
 });
 
 app.get('/admin', (req, res) => {
