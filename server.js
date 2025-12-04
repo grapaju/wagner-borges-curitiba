@@ -137,20 +137,20 @@ const SMTP_SECURE = (process.env.SMTP_SECURE
   ? String(process.env.SMTP_SECURE).toLowerCase() === 'true'
   : (process.env.SMTP_PORT == '465'));
 
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || 'smtp.gmail.com',
-  port: SMTP_PORT,
-  secure: SMTP_SECURE, // true para 465 (SMTPS), false para 587 (STARTTLS)
+const transporter = nodemailer.createTransporter({
+  host: process.env.SMTP_HOST || 'smtp.hostinger.com',
+  port: 587,                                        // FORÇAR 587
+  secure: false,                                    // false na 587 (usa STARTTLS)
   auth: {
-    user: process.env.SMTP_USER || 'seu-email@gmail.com',
-    pass: process.env.SMTP_PASS || 'sua-senha-app',
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
   },
-  authMethod: process.env.SMTP_AUTH_METHOD || undefined,
-  pool: String(process.env.SMTP_POOL || '').toLowerCase() === 'true',
-  logger: String(process.env.SMTP_DEBUG || '').toLowerCase() === 'true',
-  tls: (String(process.env.SMTP_TLS_REJECT_UNAUTHORIZED || '').toLowerCase() === 'false')
-    ? { rejectUnauthorized: false }
-    : undefined,
+  tls: {
+    rejectUnauthorized: false                      // importante na Render
+  },
+  // Debug opcional (ative só pra testar)
+  // logger: true,
+  // debug: true
 });
 
 /**
