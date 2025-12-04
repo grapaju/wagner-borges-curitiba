@@ -509,6 +509,33 @@ app.post('/api/test-email', async (req, res) => {
   }
 });
 
+/**
+ * GET /api/test-smtp - Verificar configuração SMTP (protegido)
+ */
+app.get('/api/test-smtp', async (req, res) => {
+  const token = req.headers.authorization;
+  const expectedToken = `Bearer ${process.env.ADMIN_TOKEN}`;
+
+  if (token !== expectedToken) {
+    return res.status(401).json({ success: false, error: 'Não autorizado' });
+  }
+
+  const smtpInfo = {
+    host: process.env.SMTP_HOST,
+    port: process.env.SMTP_PORT,
+    secure: process.env.SMTP_PORT == '465',
+    user: process.env.SMTP_USER,
+    from: CONFIG.EMAIL_FROM,
+  };
+
+  try {
+    const verifyResult = await transporter.verify();
+    return res.json({ success: true, verify: verifyResult, smtp: smtpInfo });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message, smtp: smtpInfo });
+  }
+});
+
 // ========================================
 // LANDING PAGE & DASHBOARD ADMINISTRATIVO
 // ========================================
