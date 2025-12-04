@@ -375,7 +375,17 @@
   </div>
 
   <script>
-    const API_URL = 'https://wagner-borges-curitiba.onrender.com/api';
+    // Detecta automaticamente a origem quando hospedado na Render
+    const API_URL = (function() {
+      try {
+        const origin = window.location.origin;
+        if (origin && origin.includes('onrender.com')) {
+          return `${origin}/api`;
+        }
+      } catch (_) {}
+      // Fallback para produção pública
+      return 'https://wagner-borges-curitiba.onrender.com/api';
+    })();
     let authToken = '';
 
     // Login
