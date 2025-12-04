@@ -132,14 +132,23 @@ async function saveToSheets(inscricao, tipo = 'confirmada') {
 // CONFIGURAÇÃO DE E-MAIL
 // ========================================
 
+const SMTP_PORT = parseInt(process.env.SMTP_PORT || '587');
+const SMTP_SECURE = (process.env.SMTP_SECURE
+  ? String(process.env.SMTP_SECURE).toLowerCase() === 'true'
+  : (process.env.SMTP_PORT == '465'));
+
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST || 'smtp.gmail.com',
-  port: parseInt(process.env.SMTP_PORT) || 587,
-  secure: process.env.SMTP_PORT == '465', // true para porta 465, false para 587
+  port: SMTP_PORT,
+  secure: SMTP_SECURE, // true para 465 (SMTPS), false para 587 (STARTTLS)
   auth: {
     user: process.env.SMTP_USER || 'seu-email@gmail.com',
     pass: process.env.SMTP_PASS || 'sua-senha-app',
   },
+  logger: String(process.env.SMTP_DEBUG || '').toLowerCase() === 'true',
+  tls: (String(process.env.SMTP_TLS_REJECT_UNAUTHORIZED || '').toLowerCase() === 'false')
+    ? { rejectUnauthorized: false }
+    : undefined,
 });
 
 /**
@@ -523,9 +532,12 @@ app.get('/api/test-smtp', async (req, res) => {
   const smtpInfo = {
     host: process.env.SMTP_HOST,
     port: process.env.SMTP_PORT,
-    secure: process.env.SMTP_PORT == '465',
+    secure: (process.env.SMTP_SECURE
+      ? String(process.env.SMTP_SECURE).toLowerCase() === 'true'
+      : (process.env.SMTP_PORT == '465')),
     user: process.env.SMTP_USER,
     from: CONFIG.EMAIL_FROM,
+    debug: String(process.env.SMTP_DEBUG || '').toLowerCase() === 'true',
   };
 
   try {
