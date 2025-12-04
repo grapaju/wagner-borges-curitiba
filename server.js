@@ -138,19 +138,13 @@ const SMTP_SECURE = (process.env.SMTP_SECURE
   : (process.env.SMTP_PORT == '465'));
 
 const transporter = nodemailer.createTransport({     // CORRETO
-  host: process.env.SMTP_HOST || 'smtp.hostinger.com',
+  host: process.env.SMTP_HOST || 'smtp-relay.brevo.com',
   port: 587,                                        // FORÇAR 587
   secure: false,                                    // false na 587 (usa STARTTLS)
   auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
+    user: '9d5bab001@smtp-brevo.com',
+    pass: 'RpmqUXhc1HTnkFbz',
   },
-  tls: {
-    rejectUnauthorized: false                      // importante na Render
-  },
-  // Debug opcional (ative só pra testar)
-  // logger: true,
-  // debug: true
 });
 
 /**
