@@ -145,6 +145,8 @@ const transporter = nodemailer.createTransport({
     user: process.env.SMTP_USER || 'seu-email@gmail.com',
     pass: process.env.SMTP_PASS || 'sua-senha-app',
   },
+  authMethod: process.env.SMTP_AUTH_METHOD || undefined,
+  pool: String(process.env.SMTP_POOL || '').toLowerCase() === 'true',
   logger: String(process.env.SMTP_DEBUG || '').toLowerCase() === 'true',
   tls: (String(process.env.SMTP_TLS_REJECT_UNAUTHORIZED || '').toLowerCase() === 'false')
     ? { rejectUnauthorized: false }
@@ -514,7 +516,13 @@ app.post('/api/test-email', async (req, res) => {
     return res.json({ success: true });
   } catch (error) {
     console.error('❌ Erro ao enviar e-mail de teste:', error.message);
-    return res.status(500).json({ success: false, error: error.message });
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+      code: error.code,
+      command: error.command,
+      stack: error.stack,
+    });
   }
 });
 
@@ -538,14 +546,47 @@ app.get('/api/test-smtp', async (req, res) => {
     user: process.env.SMTP_USER,
     from: CONFIG.EMAIL_FROM,
     debug: String(process.env.SMTP_DEBUG || '').toLowerCase() === 'true',
+    pool: String(process.env.SMTP_POOL || '').toLowerCase() === 'true',
+    authMethod: process.env.SMTP_AUTH_METHOD || undefined,
   };
 
   try {
     const verifyResult = await transporter.verify();
     return res.json({ success: true, verify: verifyResult, smtp: smtpInfo });
   } catch (error) {
-    return res.status(500).json({ success: false, error: error.message, smtp: smtpInfo });
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+      code: error.code,
+      command: error.command,
+      stack: error.stack,
+      smtp: smtpInfo,
+    });
   }
+});
+
+/**
+ * GET /api/smtp-config - Retorna configuração SMTP resolvida (protegido)
+ */
+app.get('/api/smtp-config', (req, res) => {
+  const token = req.headers.authorization;
+  const expectedToken = `Bearer ${process.env.ADMIN_TOKEN}`;
+  if (token !== expectedToken) {
+    return res.status(401).json({ success: false, error: 'Não autorizado' });
+  }
+
+  const cfg = {
+    host: process.env.SMTP_HOST,
+    port: process.env.SMTP_PORT,
+    secure: SMTP_SECURE,
+    user: process.env.SMTP_USER,
+    from: CONFIG.EMAIL_FROM,
+    debug: String(process.env.SMTP_DEBUG || '').toLowerCase() === 'true',
+    pool: String(process.env.SMTP_POOL || '').toLowerCase() === 'true',
+    authMethod: process.env.SMTP_AUTH_METHOD || undefined,
+    tlsRejectUnauthorized: !(String(process.env.SMTP_TLS_REJECT_UNAUTHORIZED || '').toLowerCase() === 'false'),
+  };
+  res.json({ success: true, smtp: cfg });
 });
 
 // ========================================
