@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Dashboard - Wagner Borges</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .header {
+      background: white;
+      padding: 30px;
+      border-radius: 15px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+      margin-bottom: 30px;
+    }
+
+    .header h1 {
+      color: #4B0082;
+      font-size: 32px;
+      margin-bottom: 10px;
+    }
+
+    .header p {
+      color: #666;
+      font-size: 16px;
+    }
+
+    .login-box {
+      background: white;
+      padding: 40px;
+      border-radius: 15px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+      max-width: 400px;
+      margin: 100px auto;
+    }
+
+    .login-box h2 {
+      color: #4B0082;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    .form-group label {
+      display: block;
+      color: #333;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .form-group input {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 15px;
+    }
+
+    .form-group input:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+
+    .btn {
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+
+    .btn:hover {
+      transform: translateY(-2px);
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 20px;
+      margin-bottom: 30px;
+    }
+
+    .stat-card {
+      background: white;
+      padding: 30px;
+      border-radius: 15px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+      text-align: center;
+    }
+
+    .stat-card .number {
+      font-size: 48px;
+      font-weight: 700;
+      color: #4B0082;
+      margin: 10px 0;
+    }
+
+    .stat-card .label {
+      color: #666;
+      font-size: 16px;
+      font-weight: 500;
+    }
+
+    .stat-card.success .number {
+      color: #28a745;
+    }
+
+    .stat-card.warning .number {
+      color: #ffc107;
+    }
+
+    .stat-card.info .number {
+      color: #17a2b8;
+    }
+
+    .table-container {
+      background: white;
+      border-radius: 15px;
+      padding: 30px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+      margin-bottom: 30px;
+    }
+
+    .table-container h2 {
+      color: #4B0082;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    thead {
+      background: #f8f9fa;
+    }
+
+    th {
+      padding: 15px;
+      text-align: left;
+      font-weight: 600;
+      color: #4B0082;
+      border-bottom: 2px solid #e0e0e0;
+    }
+
+    td {
+      padding: 15px;
+      border-bottom: 1px solid #e0e0e0;
+      color: #333;
+    }
+
+    tr:hover {
+      background: #f8f9fa;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .badge.success {
+      background: #d4edda;
+      color: #155724;
+    }
+
+    .badge.warning {
+      background: #fff3cd;
+      color: #856404;
+    }
+
+    .actions {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .btn-action {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-export {
+      background: #28a745;
+      color: white;
+    }
+
+    .btn-refresh {
+      background: #17a2b8;
+      color: white;
+    }
+
+    .btn-export:hover, .btn-refresh:hover {
+      transform: translateY(-2px);
+    }
+
+    .btn-cancel {
+      background: #dc3545;
+      color: white;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+
+    .btn-cancel:hover {
+      background: #c82333;
+      transform: scale(1.05);
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    .error {
+      background: #f8d7da;
+      color: #721c24;
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      border: 1px solid #f5c6cb;
+    }
+
+    @media (max-width: 768px) {
+      .stats {
+        grid-template-columns: 1fr;
+      }
+
+      table {
+        font-size: 14px;
+      }
+
+      th, td {
+        padding: 10px;
+      }
+    }
+  </style>
+</head>
+<body>
+  
+  <!-- LOGIN -->
+  <div id="loginBox" class="login-box">
+    <h2>🔐 Admin Login</h2>
+    <div class="form-group">
+      <label for="token">Token de Acesso</label>
+      <input type="password" id="token" placeholder="Digite o token admin">
+    </div>
+    <button class="btn" onclick="login()">Entrar</button>
+    <div id="loginError" class="error hidden">Token inválido!</div>
+  </div>
+
+  <!-- DASHBOARD -->
+  <div id="dashboard" class="container hidden">
+    <div class="header">
+      <h1>📊 Dashboard Administrativo</h1>
+      <p>Wagner Borges em Curitiba - Março 2026</p>
+    </div>
+
+    <!-- Estatísticas -->
+    <div class="stats">
+      <div class="stat-card success">
+        <div class="label">Inscrições Confirmadas</div>
+        <div class="number" id="statConfirmadas">0</div>
+        <div class="label">de 120 vagas</div>
+      </div>
+      
+      <div class="stat-card warning">
+        <div class="label">Vagas Disponíveis</div>
+        <div class="number" id="statDisponiveis">120</div>
+        <div class="label">restantes</div>
+      </div>
+      
+      <div class="stat-card info">
+        <div class="label">Lista de Espera</div>
+        <div class="number" id="statEspera">0</div>
+        <div class="label">aguardando</div>
+      </div>
+    </div>
+
+    <!-- Ações -->
+    <div class="actions">
+      <button class="btn-action btn-refresh" onclick="loadData()">🔄 Atualizar</button>
+      <button class="btn-action btn-export" onclick="exportToCSV('confirmadas')">📥 Exportar Confirmadas</button>
+      <button class="btn-action btn-export" onclick="exportToCSV('espera')">📥 Exportar Lista de Espera</button>
+    </div>
+
+    <!-- Tabela Confirmadas -->
+    <div class="table-container">
+      <h2>✅ Inscrições Confirmadas</h2>
+      <div style="overflow-x: auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Nome</th>
+              <th>E-mail</th>
+              <th>WhatsApp</th>
+              <th>Cidade</th>
+              <th>Newsletter</th>
+              <th>Data/Hora</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody id="tableConfirmadas">
+            <tr>
+              <td colspan="7" style="text-align: center; color: #999;">Carregando...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Tabela Lista de Espera -->
+    <div class="table-container">
+      <h2>📋 Lista de Espera</h2>
+      <div style="overflow-x: auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>Posição</th>
+              <th>Nome</th>
+              <th>E-mail</th>
+              <th>WhatsApp</th>
+              <th>Cidade</th>
+              <th>Newsletter</th>
+              <th>Data/Hora</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody id="tableEspera">
+            <tr>
+              <td colspan="7" style="text-align: center; color: #999;">Carregando...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_URL = 'http://localhost:3000/api';
+    let authToken = '';
+
+    // Login
+    function login() {
+      const token = document.getElementById('token').value;
+      
+      if (!token) {
+        showError('Por favor, digite o token');
+        return;
+      }
+
+      authToken = `Bearer ${token}`;
+
+      // Testar token
+      fetch(`${API_URL}/inscricoes`, {
+        headers: {
+          'Authorization': authToken
+        }
+      })
+      .then(res => {
+        if (res.ok) {
+          document.getElementById('loginBox').classList.add('hidden');
+          document.getElementById('dashboard').classList.remove('hidden');
+          loadData();
+        } else {
+          showError('Token inválido!');
+        }
+      })
+      .catch(err => {
+        showError('Erro ao conectar com o servidor');
+      });
+    }
+
+    function showError(msg) {
+      const error = document.getElementById('loginError');
+      error.textContent = msg;
+      error.classList.remove('hidden');
+      setTimeout(() => error.classList.add('hidden'), 3000);
+    }
+
+    // Carregar dados
+    async function loadData() {
+      try {
+        const res = await fetch(`${API_URL}/inscricoes`, {
+          headers: { 'Authorization': authToken }
+        });
+
+        const data = await res.json();
+
+        if (data.success) {
+          const confirmadas = data.data.confirmadas;
+          const espera = data.data.listaEspera;
+
+          // Atualizar stats
+          document.getElementById('statConfirmadas').textContent = confirmadas.length;
+          document.getElementById('statDisponiveis').textContent = 120 - confirmadas.length;
+          document.getElementById('statEspera').textContent = espera.length;
+
+          // Atualizar tabelas
+          renderTable('tableConfirmadas', confirmadas, true);
+          renderTable('tableEspera', espera, false);
+        }
+      } catch (error) {
+        console.error('Erro ao carregar dados:', error);
+      }
+    }
+
+    // Renderizar tabela
+    function renderTable(tableId, data, isConfirmed) {
+      const tbody = document.getElementById(tableId);
+
+      if (data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: #999;">Nenhuma inscrição ainda</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = data.map((item, index) => `
+        <tr>
+          <td><strong>${isConfirmed ? `#${String(item.numero || index + 1).padStart(3, '0')}` : index + 1}</strong></td>
+          <td>${item.nome}</td>
+          <td>${item.email}</td>
+          <td>${item.telefone}</td>
+          <td>${item.cidade || '-'}</td>
+          <td>
+            <span class="badge ${item.newsletter ? 'success' : 'warning'}">
+              ${item.newsletter ? 'Sim' : 'Não'}
+            </span>
+          </td>
+          <td>${new Date(item.dataInscricao).toLocaleString('pt-BR')}</td>
+          <td>
+            <button class="btn-cancel" onclick="cancelInscricao('${item.email}', '${item.nome}')">
+              ❌ Cancelar
+            </button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    // Exportar CSV
+    function exportToCSV(type) {
+      fetch(`${API_URL}/inscricoes`, {
+        headers: { 'Authorization': authToken }
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (!data.success) return;
+
+        const items = type === 'confirmadas' ? data.data.confirmadas : data.data.listaEspera;
+        
+        let csv = 'Numero,Nome,Email,WhatsApp,Cidade,Newsletter,Data/Hora\n';
+        
+        items.forEach((item, index) => {
+          csv += `${type === 'confirmadas' ? item.numero : index + 1},`;
+          csv += `"${item.nome}",`;
+          csv += `"${item.email}",`;
+          csv += `"${item.telefone}",`;
+          csv += `"${item.cidade || ''}",`;
+          csv += `"${item.newsletter ? 'Sim' : 'Não'}",`;
+          csv += `"${new Date(item.dataInscricao).toLocaleString('pt-BR')}"\n`;
+        });
+
+        // Download
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        
+        link.setAttribute('href', url);
+        link.setAttribute('download', `inscricoes_${type}_${Date.now()}.csv`);
+        link.style.visibility = 'hidden';
+        
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      });
+    }
+
+    // Cancelar inscrição
+    async function cancelInscricao(email, nome) {
+      if (!confirm(`Tem certeza que deseja cancelar a inscrição de ${nome}?\n\nSe houver lista de espera, o próximo será promovido automaticamente.`)) {
+        return;
+      }
+
+      try {
+        const res = await fetch(`${API_URL}/cancelar`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': authToken
+          },
+          body: JSON.stringify({ email })
+        });
+
+        const data = await res.json();
+
+        if (data.success) {
+          alert('✅ Inscrição cancelada com sucesso!\n\nA lista foi atualizada automaticamente.');
+          loadData(); // Recarregar dados
+        } else {
+          alert('❌ Erro: ' + data.error);
+        }
+      } catch (error) {
+        alert('❌ Erro ao cancelar inscrição: ' + error.message);
+      }
+    }
+
+    // Permitir Enter no login
+    document.getElementById('token').addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') {
+        login();
+      }
+    });
+  </script>
+
+</body>
+</html>
