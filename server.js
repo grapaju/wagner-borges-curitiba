@@ -137,14 +137,21 @@ const SMTP_SECURE = (process.env.SMTP_SECURE
   ? String(process.env.SMTP_SECURE).toLowerCase() === 'true'
   : (process.env.SMTP_PORT == '465'));
 
-const transporter = nodemailer.createTransport({     // CORRETO
-  host: process.env.SMTP_HOST || 'smtp-relay.brevo.com',
-  port: 587,                                        // FORÇAR 587
-  secure: false,                                    // false na 587 (usa STARTTLS)
+const transporter = nodemailer.createTransport({
+  host: 'smtp-relay.brevo.com',
+  port: 587,
+  secure: false,                    // obrigatório na 587
   auth: {
-    user: '9d5bab001@smtp-brevo.com',
-    pass: 'RpmqUXhc1HTnkFbz',
+    user: '9d5bab001@smtp-brevo.com',     // ← seu login do Brevo
+    pass: 'RpmqUXhc1HTnkFbz',             // ← sua senha do Brevo
   },
+  tls: {
+    rejectUnauthorized: false       // essencial na Render gratuita
+  },
+  // ←←←← AQUI ESTÃO AS LINHAS QUE RESOLVEM O TIMEOUT ←←←←
+  connectionTimeout: 60000,    // 60 segundos (em vez dos 10 segundos padrão)
+  greetingTimeout: 60000,
+  socketTimeout: 60000,
 });
 
 /**
