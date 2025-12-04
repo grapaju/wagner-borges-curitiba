@@ -470,6 +470,45 @@ app.post('/api/cancelar', async (req, res) => {
   });
 });
 
+/**
+ * POST /api/test-email - Enviar e-mail de teste (protegido)
+ * Body: { to: "email@destino.com", subject?: string }
+ */
+app.post('/api/test-email', async (req, res) => {
+  const token = req.headers.authorization;
+  const expectedToken = `Bearer ${process.env.ADMIN_TOKEN}`;
+
+  if (token !== expectedToken) {
+    return res.status(401).json({ success: false, error: 'Não autorizado' });
+  }
+
+  const { to, subject } = req.body || {};
+  if (!to) {
+    return res.status(400).json({ success: false, error: 'Campo obrigatório: to' });
+  }
+
+  try {
+    await transporter.sendMail({
+      from: `KOI Editora <${CONFIG.EMAIL_FROM}>`,
+      to,
+      subject: subject || 'Teste de E-mail - KOI Editora',
+      html: `
+        <div style="font-family:Arial,sans-serif;padding:20px">
+          <h2 style="color:#4B0082;margin:0 0 10px">✅ E-mail de Teste</h2>
+          <p>Este é um e-mail de teste enviado pelo backend hospedado na Render.</p>
+          <p><strong>Servidor SMTP:</strong> ${process.env.SMTP_HOST}:${process.env.SMTP_PORT}</p>
+          <p><strong>Remetente:</strong> ${CONFIG.EMAIL_FROM}</p>
+        </div>
+      `,
+    });
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('❌ Erro ao enviar e-mail de teste:', error.message);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // ========================================
 // LANDING PAGE & DASHBOARD ADMINISTRATIVO
 // ========================================
