@@ -137,7 +137,7 @@ const SMTP_SECURE = (process.env.SMTP_SECURE
   ? String(process.env.SMTP_SECURE).toLowerCase() === 'true'
   : (process.env.SMTP_PORT == '465'));
 
-const transporter = nodemailer.createTransporter({
+const transporter = nodemailer.createTransport({     // CORRETO
   host: process.env.SMTP_HOST || 'smtp.hostinger.com',
   port: 587,                                        // FORÇAR 587
   secure: false,                                    // false na 587 (usa STARTTLS)
