@@ -84,25 +84,109 @@ loadInscricoes();
 // CONFIGURAÇÃO GOOGLE SHEETS
 // ========================================
 
-const auth = new google.auth.GoogleAuth({
-  keyFile: './credentials.json', // Arquivo de credenciais Google
-  scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-});
+let SHEETS_ENABLED = false;
+let SHEETS_MODE = 'disabled';
+let sheets = null;
+const SHEET_TABS = ['Inscrições Confirmadas', 'Lista de Espera'];
+const SHEET_HEADERS = ['Numero','Nome','Email','WhatsApp','Cidade','Newsletter','Data/Hora','Status'];
 
-const sheets = google.sheets({ version: 'v4', auth });
+try {
+  const scopes = ['https://www.googleapis.com/auth/spreadsheets'];
+  const credPath = path.join(__dirname, 'credentials.json');
+  const hasFile = fs.existsSync(credPath);
+  const b64 = process.env.GOOGLE_CREDENTIALS_BASE64;
+
+  if (b64) {
+    // Credenciais via variável de ambiente (base64 do JSON da conta de serviço)
+    try {
+      const jsonStr = Buffer.from(b64, 'base64').toString('utf8');
+      const credentials = JSON.parse(jsonStr);
+      const auth = new google.auth.GoogleAuth({ credentials, scopes });
+      sheets = google.sheets({ version: 'v4', auth });
+      SHEETS_ENABLED = true;
+      SHEETS_MODE = 'env';
+      console.log('✅ Google Sheets habilitado (credenciais via variável)');
+    } catch (e) {
+      console.warn('⚠️  GOOGLE_CREDENTIALS_BASE64 inválido (não é JSON válido). Sheets desabilitado.');
+      SHEETS_ENABLED = false;
+      SHEETS_MODE = 'disabled';
+    }
+  } else if (hasFile) {
+    // Credenciais via arquivo local credentials.json
+    const auth = new google.auth.GoogleAuth({ keyFile: credPath, scopes });
+    sheets = google.sheets({ version: 'v4', auth });
+    SHEETS_ENABLED = true;
+    SHEETS_MODE = 'file';
+    console.log('✅ Google Sheets habilitado (credentials.json encontrado)');
+  } else {
+    console.log('ℹ️  Google Sheets desabilitado: sem credentials.json e sem GOOGLE_CREDENTIALS_BASE64');
+  }
+} catch (err) {
+  console.error('❌ Erro ao configurar Google Sheets:', err.message);
+  SHEETS_ENABLED = false;
+  SHEETS_MODE = 'disabled';
+}
+
+async function ensureSheetSetup() {
+  try {
+    if (!SHEETS_ENABLED) return;
+    if (!CONFIG.GOOGLE_SHEET_ID) {
+      console.warn('⚠️  GOOGLE_SHEET_ID não definido; não é possível preparar a planilha');
+      return;
+    }
+
+    const meta = await sheets.spreadsheets.get({
+      spreadsheetId: CONFIG.GOOGLE_SHEET_ID,
+    });
+    const existing = (meta.data.sheets || []).map(s => s.properties.title);
+
+    const requests = [];
+    for (const title of SHEET_TABS) {
+      if (!existing.includes(title)) {
+        requests.push({ addSheet: { properties: { title } } });
+      }
+    }
+    if (requests.length > 0) {
+      await sheets.spreadsheets.batchUpdate({
+        spreadsheetId: CONFIG.GOOGLE_SHEET_ID,
+        requestBody: { requests },
+      });
+      console.log('✅ Abas criadas no Google Sheets:', SHEET_TABS.filter(t => !existing.includes(t)).join(', '));
+    }
+
+    // Garantir cabeçalhos nas duas abas
+    for (const title of SHEET_TABS) {
+      await sheets.spreadsheets.values.update({
+        spreadsheetId: CONFIG.GOOGLE_SHEET_ID,
+        range: `${title}!A1:H1`,
+        valueInputOption: 'RAW',
+        resource: { values: [SHEET_HEADERS] },
+      });
+    }
+    console.log('✅ Cabeçalhos aplicados nas abas do Google Sheets');
+  } catch (err) {
+    console.error('❌ Erro ao preparar a planilha do Google Sheets:', err.message);
+  }
+}
+
+// Preparar planilha em background (não bloqueia o servidor)
+ensureSheetSetup();
 
 /**
  * Salvar inscrição no Google Sheets
  */
 async function saveToSheets(inscricao, tipo = 'confirmada') {
-  // Google Sheets desabilitado - configure credentials.json para ativar
-  // Por enquanto, os dados são salvos apenas na memória e podem ser exportados via CSV
-  return;
-  
-  /* 
   try {
+    if (!SHEETS_ENABLED) {
+      return; // Silencioso: não bloqueia fluxo caso Sheets não esteja habilitado
+    }
+    if (!CONFIG.GOOGLE_SHEET_ID) {
+      console.warn('⚠️  GOOGLE_SHEET_ID não definido; pulando salvamento no Sheets');
+      return;
+    }
+
     const sheetName = tipo === 'confirmada' ? 'Inscrições Confirmadas' : 'Lista de Espera';
-    
+
     const values = [[
       inscricao.numero || '',
       inscricao.nome,
@@ -125,7 +209,6 @@ async function saveToSheets(inscricao, tipo = 'confirmada') {
   } catch (error) {
     console.error('❌ Erro ao salvar no Google Sheets:', error.message);
   }
-  */
 }
 
 // ========================================
@@ -566,43 +649,47 @@ app.get('/api/email-config', (req, res) => {
     senderEmail: CONFIG.EMAIL_FROM,
     senderName: EMAIL_SENDER_NAME,
     hasApiKey: !!BREVO_API_KEY,
-    apiKeyPreview: BREVO_API_KEY ? `${BREVO_API_KEY.slice(0, 8)}...(${BREVO_API_KEY.length} chars)` : null,
   };
   res.json({ success: true, email: cfg });
 });
 
 /**
- * GET /api/brevo-account - Diagnóstico da chave Brevo (protegido)
- * Consulta o endpoint /v3/account da Brevo para validar a API key
+ * POST /api/sheets-setup - Força criação de abas/cabeçalhos (protegido)
  */
-app.get('/api/brevo-account', async (req, res) => {
+app.post('/api/sheets-setup', async (req, res) => {
   const token = req.headers.authorization;
   const expectedToken = `Bearer ${process.env.ADMIN_TOKEN}`;
   if (token !== expectedToken) {
     return res.status(401).json({ success: false, error: 'Não autorizado' });
   }
-
-  if (!BREVO_API_KEY) {
-    return res.status(400).json({ success: false, error: 'BREVO_API_KEY ausente' });
-  }
-
   try {
-    const resp = await fetch('https://api.brevo.com/v3/account', {
-      headers: { 'api-key': BREVO_API_KEY },
-    });
-    const data = await resp.json().catch(() => ({}));
-    if (!resp.ok) {
-      return res.status(resp.status).json({ success: false, error: data.message || resp.statusText, details: data });
-    }
-    return res.json({ success: true, account: {
-      plan: data.plan || [],
-      email: data.email || null,
-      companyName: data.companyName || null,
-    }});
+    await ensureSheetSetup();
+    return res.json({ success: true });
   } catch (error) {
-    return res.status(500).json({ success: false, error: error.message, stack: error.stack });
+    return res.status(500).json({ success: false, error: error.message });
   }
 });
+
+/**
+ * GET /api/sheets-status - Retorna status do Google Sheets (protegido)
+ */
+app.get('/api/sheets-status', async (req, res) => {
+  const token = req.headers.authorization;
+  const expectedToken = `Bearer ${process.env.ADMIN_TOKEN}`;
+  if (token !== expectedToken) {
+    return res.status(401).json({ success: false, error: 'Não autorizado' });
+  }
+  return res.json({
+    success: true,
+    sheets: {
+      enabled: SHEETS_ENABLED,
+      mode: SHEETS_MODE,
+      sheetId: CONFIG.GOOGLE_SHEET_ID || null,
+    }
+  });
+});
+
+// (Diagnóstico Brevo removido em produção)
 
 // ========================================
 // LANDING PAGE & DASHBOARD ADMINISTRATIVO
@@ -627,18 +714,3 @@ app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
 
-// ========================================
-// INICIAR SERVIDOR
-// ========================================
-
-app.listen(PORT, () => {
-  console.log(`
-  ╔═══════════════════════════════════════════════╗
-  ║  🚀 SERVIDOR INICIADO COM SUCESSO!           ║
-  ║                                               ║
-  ║  Backend: http://localhost:${PORT}              ║
-  ║  API: http://localhost:${PORT}/api/status       ║
-  ║  Admin: http://localhost:${PORT}/admin          ║
-  ╚═══════════════════════════════════════════════╝
-  `);
-});

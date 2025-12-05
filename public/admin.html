@@ -316,9 +316,15 @@
 
     <!-- Ações -->
     <div class="actions">
-      <button class="btn-action btn-refresh" onclick="loadData()">🔄 Atualizar</button>
+      <button class="btn-action btn-refresh" onclick="refreshAll()">🔄 Atualizar</button>
       <button class="btn-action btn-export" onclick="exportToCSV('confirmadas')">📥 Exportar Confirmadas</button>
       <button class="btn-action btn-export" onclick="exportToCSV('espera')">📥 Exportar Lista de Espera</button>
+      <div style="margin-left:auto; display:flex; align-items:center; gap:12px;">
+        <span id="emailStatus" style="font-weight:600; color:#4B0082;">Email: verificando...</span>
+        <button class="btn-action" style="background:#495057; color:white;" onclick="testEmail()">✉️ Testar E-mail</button>
+        <span id="sheetsStatus" style="font-weight:600; color:#4B0082;">Sheets: verificando...</span>
+        <button class="btn-action" style="background:#6c757d; color:white;" onclick="prepareSheets()">🧩 Preparar Planilha</button>
+      </div>
     </div>
 
     <!-- Tabela Confirmadas -->
@@ -414,6 +420,8 @@
           loadData();
           // Iniciar auto-atualização sem deslogar
           startAutoRefresh();
+          loadEmailStatus();
+          loadIntegrationsStatus();
         } else {
           showError('Token inválido!');
         }
@@ -457,11 +465,110 @@
       }
     }
 
+    // Atualizar tudo (dados + status integrações)
+    function refreshAll() {
+      loadData();
+      loadEmailStatus();
+      loadIntegrationsStatus();
+    }
+
+    // Status do E-mail (Brevo)
+    async function loadEmailStatus() {
+      try {
+        const res = await fetch(`${API_URL}/email-config`, {
+          headers: { 'Authorization': authToken }
+        });
+        if (!res.ok) throw new Error('HTTP '+res.status);
+        const data = await res.json();
+        const el = document.getElementById('emailStatus');
+        if (data.success && data.email) {
+          const e = data.email;
+          el.textContent = `Email: ${e.provider} • ${e.senderEmail} ${e.hasApiKey ? '• chave ok' : '• sem chave'}`;
+          el.style.color = e.hasApiKey ? '#28a745' : '#dc3545';
+        } else {
+          el.textContent = 'Email: erro ao consultar';
+          el.style.color = '#dc3545';
+        }
+      } catch (_) {
+        const el = document.getElementById('emailStatus');
+        el.textContent = 'Email: indisponível';
+        el.style.color = '#dc3545';
+      }
+    }
+
+    async function testEmail() {
+      const to = prompt('Para qual e-mail enviar o teste?');
+      if (!to) return;
+      try {
+        const res = await fetch(`${API_URL}/test-email`, {
+          method: 'POST',
+          headers: {
+            'Authorization': authToken,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ to })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          alert('✅ E-mail de teste enviado com sucesso!');
+        } else {
+          alert('❌ Falha no envio: ' + (data.error || res.status));
+        }
+      } catch (err) {
+        alert('❌ Erro ao enviar e-mail de teste: ' + err.message);
+      }
+    }
+
+    // Status das integrações (Sheets)
+    async function loadIntegrationsStatus() {
+      try {
+        const res = await fetch(`${API_URL}/sheets-status`, {
+          headers: { 'Authorization': authToken }
+        });
+        if (!res.ok) throw new Error('HTTP '+res.status);
+        const data = await res.json();
+        const el = document.getElementById('sheetsStatus');
+        if (data.success) {
+          const s = data.sheets;
+          let label = s.enabled ? 'Ativo' : 'Desabilitado';
+          if (s.mode === 'env') label += ' (env)';
+          if (s.mode === 'file') label += ' (arquivo)';
+          el.textContent = `Sheets: ${label}${s.sheetId ? ' • ID: '+s.sheetId : ''}`;
+          el.style.color = s.enabled ? '#28a745' : '#dc3545';
+        } else {
+          el.textContent = 'Sheets: erro ao consultar';
+          el.style.color = '#dc3545';
+        }
+      } catch (_) {
+        const el = document.getElementById('sheetsStatus');
+        el.textContent = 'Sheets: indisponível';
+        el.style.color = '#dc3545';
+      }
+    }
+
+    async function prepareSheets() {
+      try {
+        const res = await fetch(`${API_URL}/sheets-setup`, {
+          method: 'POST',
+          headers: { 'Authorization': authToken }
+        });
+        const data = await res.json();
+        if (data.success) {
+          alert('✅ Planilha preparada com sucesso!');
+          loadIntegrationsStatus();
+        } else {
+          alert('❌ Erro ao preparar planilha: ' + (data.error || ''));
+        }
+      } catch (err) {
+        alert('❌ Erro ao preparar planilha: ' + err.message);
+      }
+    }
+
     // Auto refresh a cada 15s (pode ajustar)
     let refreshTimer = null;
     function startAutoRefresh() {
       if (refreshTimer) return;
-      refreshTimer = setInterval(loadData, 15000);
+      refreshTimer = setInterval(refreshAll, 15000);
     }
     function stopAutoRefresh() {
       if (refreshTimer) {
@@ -589,6 +696,8 @@
                 document.getElementById('dashboard').classList.remove('hidden');
                 loadData();
                 startAutoRefresh();
+                loadEmailStatus();
+                loadIntegrationsStatus();
               }
             })
             .catch(()=>{});
