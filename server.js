@@ -40,7 +40,11 @@ const CONFIG = {
 };
 
 // Armazenamento em arquivo JSON (persistência)
-const DATA_FILE = path.join(__dirname, 'inscricoes.json');
+// Usa diretório dedicado para facilitar uso de Persistent Disk no Render
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
+try { if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR); } catch(_) {}
+const DATA_FILE = path.join(DATA_DIR, 'inscricoes.json');
+const DATA_FILE_BACKUP = path.join(DATA_DIR, 'inscricoes.backup.json');
 
 let inscricoes = [];
 let listaEspera = [];
@@ -49,16 +53,32 @@ let listaEspera = [];
 function loadInscricoes() {
   try {
     if (fs.existsSync(DATA_FILE)) {
-      const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+      const raw = fs.readFileSync(DATA_FILE, 'utf8');
+      const data = JSON.parse(raw);
       inscricoes = data.inscricoes || [];
       listaEspera = data.listaEspera || [];
       console.log(`✅ ${inscricoes.length} inscrições confirmadas carregadas`);
       console.log(`✅ ${listaEspera.length} pessoas na lista de espera carregadas`);
+    } else if (fs.existsSync(DATA_FILE_BACKUP)) {
+      const raw = fs.readFileSync(DATA_FILE_BACKUP, 'utf8');
+      const data = JSON.parse(raw);
+      inscricoes = data.inscricoes || [];
+      listaEspera = data.listaEspera || [];
+      console.log('⚠️  Arquivo principal ausente. Recuperado do backup.');
     } else {
       console.log('ℹ️  Nenhuma inscrição anterior encontrada. Iniciando do zero.');
     }
   } catch (error) {
     console.error('❌ Erro ao carregar inscrições:', error.message);
+    try {
+      if (fs.existsSync(DATA_FILE_BACKUP)) {
+        const raw = fs.readFileSync(DATA_FILE_BACKUP, 'utf8');
+        const data = JSON.parse(raw);
+        inscricoes = data.inscricoes || [];
+        listaEspera = data.listaEspera || [];
+        console.log('🛟 Recuperado do backup após erro no arquivo principal.');
+      }
+    } catch (_) {}
   }
 }
 
@@ -70,8 +90,11 @@ function saveInscricoes() {
       listaEspera,
       ultimaAtualizacao: new Date().toISOString(),
     };
-    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-    console.log('💾 Inscrições salvas no arquivo');
+    const json = JSON.stringify(data, null, 2);
+    fs.writeFileSync(DATA_FILE, json);
+    // Backup
+    try { fs.writeFileSync(DATA_FILE_BACKUP, json); } catch(_) {}
+    console.log('💾 Inscrições salvas');
   } catch (error) {
     console.error('❌ Erro ao salvar inscrições:', error.message);
   }
@@ -563,5 +586,9 @@ app.get('/admin', (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Servidor iniciado na porta ${PORT}`);
   console.log('🔗 Health check em /api/status');
+  // Autosave periódico como proteção adicional
+  setInterval(() => {
+    try { saveInscricoes(); } catch (_) {}
+  }, 60000);
 });
 
