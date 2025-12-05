@@ -322,8 +322,7 @@
       <div style="margin-left:auto; display:flex; align-items:center; gap:12px;">
         <span id="emailStatus" style="font-weight:600; color:#4B0082;">Email: verificando...</span>
         <button class="btn-action" style="background:#495057; color:white;" onclick="testEmail()">✉️ Testar E-mail</button>
-        <span id="sheetsStatus" style="font-weight:600; color:#4B0082;">Sheets: verificando...</span>
-        <button class="btn-action" style="background:#6c757d; color:white;" onclick="prepareSheets()">🧩 Preparar Planilha</button>
+        <!-- Integração com Sheets removida -->
       </div>
     </div>
 
@@ -519,50 +518,8 @@
       }
     }
 
-    // Status das integrações (Sheets)
-    async function loadIntegrationsStatus() {
-      try {
-        const res = await fetch(`${API_URL}/sheets-status`, {
-          headers: { 'Authorization': authToken }
-        });
-        if (!res.ok) throw new Error('HTTP '+res.status);
-        const data = await res.json();
-        const el = document.getElementById('sheetsStatus');
-        if (data.success) {
-          const s = data.sheets;
-          let label = s.enabled ? 'Ativo' : 'Desabilitado';
-          if (s.mode === 'env') label += ' (env)';
-          if (s.mode === 'file') label += ' (arquivo)';
-          el.textContent = `Sheets: ${label}${s.sheetId ? ' • ID: '+s.sheetId : ''}`;
-          el.style.color = s.enabled ? '#28a745' : '#dc3545';
-        } else {
-          el.textContent = 'Sheets: erro ao consultar';
-          el.style.color = '#dc3545';
-        }
-      } catch (_) {
-        const el = document.getElementById('sheetsStatus');
-        el.textContent = 'Sheets: indisponível';
-        el.style.color = '#dc3545';
-      }
-    }
-
-    async function prepareSheets() {
-      try {
-        const res = await fetch(`${API_URL}/sheets-setup`, {
-          method: 'POST',
-          headers: { 'Authorization': authToken }
-        });
-        const data = await res.json();
-        if (data.success) {
-          alert('✅ Planilha preparada com sucesso!');
-          loadIntegrationsStatus();
-        } else {
-          alert('❌ Erro ao preparar planilha: ' + (data.error || ''));
-        }
-      } catch (err) {
-        alert('❌ Erro ao preparar planilha: ' + err.message);
-      }
-    }
+    // Integração com Sheets removida
+    function loadIntegrationsStatus() { /* no-op */ }
 
     // Auto refresh a cada 15s (pode ajustar)
     let refreshTimer = null;
