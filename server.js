@@ -81,135 +81,13 @@ function saveInscricoes() {
 loadInscricoes();
 
 // ========================================
-// CONFIGURAÇÃO GOOGLE SHEETS
+// GOOGLE SHEETS DESABILITADO
 // ========================================
-
-let SHEETS_ENABLED = false;
-let SHEETS_MODE = 'disabled';
-let sheets = null;
-const SHEET_TABS = ['Inscrições Confirmadas', 'Lista de Espera'];
-const SHEET_HEADERS = ['Numero','Nome','Email','WhatsApp','Cidade','Newsletter','Data/Hora','Status'];
-
-try {
-  const scopes = ['https://www.googleapis.com/auth/spreadsheets'];
-  const credPath = path.join(__dirname, 'credentials.json');
-  const hasFile = fs.existsSync(credPath);
-  const b64 = process.env.GOOGLE_CREDENTIALS_BASE64;
-
-  if (b64) {
-    // Credenciais via variável de ambiente (base64 do JSON da conta de serviço)
-    try {
-      const jsonStr = Buffer.from(b64, 'base64').toString('utf8');
-      const credentials = JSON.parse(jsonStr);
-      const auth = new google.auth.GoogleAuth({ credentials, scopes });
-      sheets = google.sheets({ version: 'v4', auth });
-      SHEETS_ENABLED = true;
-      SHEETS_MODE = 'env';
-      console.log('✅ Google Sheets habilitado (credenciais via variável)');
-    } catch (e) {
-      console.warn('⚠️  GOOGLE_CREDENTIALS_BASE64 inválido (não é JSON válido). Sheets desabilitado.');
-      SHEETS_ENABLED = false;
-      SHEETS_MODE = 'disabled';
-    }
-  } else if (hasFile) {
-    // Credenciais via arquivo local credentials.json
-    const auth = new google.auth.GoogleAuth({ keyFile: credPath, scopes });
-    sheets = google.sheets({ version: 'v4', auth });
-    SHEETS_ENABLED = true;
-    SHEETS_MODE = 'file';
-    console.log('✅ Google Sheets habilitado (credentials.json encontrado)');
-  } else {
-    console.log('ℹ️  Google Sheets desabilitado: sem credentials.json e sem GOOGLE_CREDENTIALS_BASE64');
-  }
-} catch (err) {
-  console.error('❌ Erro ao configurar Google Sheets:', err.message);
-  SHEETS_ENABLED = false;
-  SHEETS_MODE = 'disabled';
-}
-
-async function ensureSheetSetup() {
-  try {
-    if (!SHEETS_ENABLED) return;
-    if (!CONFIG.GOOGLE_SHEET_ID) {
-      console.warn('⚠️  GOOGLE_SHEET_ID não definido; não é possível preparar a planilha');
-      return;
-    }
-
-    const meta = await sheets.spreadsheets.get({
-      spreadsheetId: CONFIG.GOOGLE_SHEET_ID,
-    });
-    const existing = (meta.data.sheets || []).map(s => s.properties.title);
-
-    const requests = [];
-    for (const title of SHEET_TABS) {
-      if (!existing.includes(title)) {
-        requests.push({ addSheet: { properties: { title } } });
-      }
-    }
-    if (requests.length > 0) {
-      await sheets.spreadsheets.batchUpdate({
-        spreadsheetId: CONFIG.GOOGLE_SHEET_ID,
-        requestBody: { requests },
-      });
-      console.log('✅ Abas criadas no Google Sheets:', SHEET_TABS.filter(t => !existing.includes(t)).join(', '));
-    }
-
-    // Garantir cabeçalhos nas duas abas
-    for (const title of SHEET_TABS) {
-      await sheets.spreadsheets.values.update({
-        spreadsheetId: CONFIG.GOOGLE_SHEET_ID,
-        range: `${title}!A1:H1`,
-        valueInputOption: 'RAW',
-        resource: { values: [SHEET_HEADERS] },
-      });
-    }
-    console.log('✅ Cabeçalhos aplicados nas abas do Google Sheets');
-  } catch (err) {
-    console.error('❌ Erro ao preparar a planilha do Google Sheets:', err.message);
-  }
-}
-
-// Preparar planilha em background (não bloqueia o servidor)
-ensureSheetSetup();
-
-/**
- * Salvar inscrição no Google Sheets
- */
-async function saveToSheets(inscricao, tipo = 'confirmada') {
-  try {
-    if (!SHEETS_ENABLED) {
-      return; // Silencioso: não bloqueia fluxo caso Sheets não esteja habilitado
-    }
-    if (!CONFIG.GOOGLE_SHEET_ID) {
-      console.warn('⚠️  GOOGLE_SHEET_ID não definido; pulando salvamento no Sheets');
-      return;
-    }
-
-    const sheetName = tipo === 'confirmada' ? 'Inscrições Confirmadas' : 'Lista de Espera';
-
-    const values = [[
-      inscricao.numero || '',
-      inscricao.nome,
-      inscricao.email,
-      inscricao.telefone,
-      inscricao.cidade || '',
-      inscricao.newsletter ? 'Sim' : 'Não',
-      new Date(inscricao.dataInscricao).toLocaleString('pt-BR'),
-      tipo,
-    ]];
-
-    await sheets.spreadsheets.values.append({
-      spreadsheetId: CONFIG.GOOGLE_SHEET_ID,
-      range: `${sheetName}!A:H`,
-      valueInputOption: 'USER_ENTERED',
-      resource: { values },
-    });
-
-    console.log(`✅ Inscrição salva no Google Sheets: ${inscricao.email}`);
-  } catch (error) {
-    console.error('❌ Erro ao salvar no Google Sheets:', error.message);
-  }
-}
+// Removido por solicitação: nenhuma integração com planilha.
+const SHEETS_ENABLED = false;
+const SHEETS_MODE = 'disabled';
+async function ensureSheetSetup() { /* no-op */ }
+async function saveToSheets() { /* no-op */ }
 
 // ========================================
 // CONFIGURAÇÃO DE E-MAIL (BREVO API HTTP)
@@ -460,8 +338,7 @@ app.post('/api/inscricao', async (req, res) => {
       // Salvar no arquivo JSON
       saveInscricoes();
 
-      // Salvar no Google Sheets
-      await saveToSheets(inscricao, 'confirmada');
+      // Google Sheets desabilitado
 
       // Enviar e-mail
       await sendConfirmationEmail(inscricao, 'confirmada');
@@ -481,8 +358,7 @@ app.post('/api/inscricao', async (req, res) => {
       // Salvar no arquivo JSON
       saveInscricoes();
 
-      // Salvar no Google Sheets
-      await saveToSheets(inscricao, 'lista_espera');
+      // Google Sheets desabilitado
 
       // Enviar e-mail
       await sendConfirmationEmail(inscricao, 'lista_espera');
@@ -653,41 +529,7 @@ app.get('/api/email-config', (req, res) => {
   res.json({ success: true, email: cfg });
 });
 
-/**
- * POST /api/sheets-setup - Força criação de abas/cabeçalhos (protegido)
- */
-app.post('/api/sheets-setup', async (req, res) => {
-  const token = req.headers.authorization;
-  const expectedToken = `Bearer ${process.env.ADMIN_TOKEN}`;
-  if (token !== expectedToken) {
-    return res.status(401).json({ success: false, error: 'Não autorizado' });
-  }
-  try {
-    await ensureSheetSetup();
-    return res.json({ success: true });
-  } catch (error) {
-    return res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-/**
- * GET /api/sheets-status - Retorna status do Google Sheets (protegido)
- */
-app.get('/api/sheets-status', async (req, res) => {
-  const token = req.headers.authorization;
-  const expectedToken = `Bearer ${process.env.ADMIN_TOKEN}`;
-  if (token !== expectedToken) {
-    return res.status(401).json({ success: false, error: 'Não autorizado' });
-  }
-  return res.json({
-    success: true,
-    sheets: {
-      enabled: SHEETS_ENABLED,
-      mode: SHEETS_MODE,
-      sheetId: CONFIG.GOOGLE_SHEET_ID || null,
-    }
-  });
-});
+// Endpoints de Google Sheets removidos
 
 // (Diagnóstico Brevo removido em produção)
 
@@ -712,5 +554,14 @@ app.get('/', (req, res) => {
 
 app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+
+// ========================================
+// START SERVER
+// ========================================
+
+app.listen(PORT, () => {
+  console.log(`🚀 Servidor iniciado na porta ${PORT}`);
+  console.log('🔗 Health check em /api/status');
 });
 
