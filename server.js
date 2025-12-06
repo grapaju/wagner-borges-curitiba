@@ -40,40 +40,141 @@ const CONFIG = {
 };
 
 // Armazenamento em arquivo JSON (persistência)
-const DATA_FILE = path.join(__dirname, 'inscricoes.json');
+// Por padrão, salva na raiz do backend para compatibilidade
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
+
+// Garantir criação do diretório de dados
+try { 
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    console.log(`📁 Diretório de dados criado: ${DATA_DIR}`);
+  }
+} catch(err) {
+  console.error(`❌ Erro ao criar diretório ${DATA_DIR}:`, err.message);
+  console.error('⚠️  Usando diretório raiz como fallback');
+}
+
+const DATA_FILE = path.join(DATA_DIR, 'inscricoes.json');
+const DATA_FILE_BACKUP = path.join(DATA_DIR, 'inscricoes.backup.json');
+
+console.log(`📂 Arquivo de dados: ${DATA_FILE}`);
 
 let inscricoes = [];
 let listaEspera = [];
 
 // Carregar inscrições salvas ao iniciar
 function loadInscricoes() {
+  console.log('🔄 Carregando inscrições do arquivo...');
   try {
     if (fs.existsSync(DATA_FILE)) {
-      const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-      inscricoes = data.inscricoes || [];
-      listaEspera = data.listaEspera || [];
+      const raw = fs.readFileSync(DATA_FILE, 'utf8');
+      const data = JSON.parse(raw);
+      inscricoes = Array.isArray(data.inscricoes) ? data.inscricoes : [];
+      listaEspera = Array.isArray(data.listaEspera) ? data.listaEspera : [];
       console.log(`✅ ${inscricoes.length} inscrições confirmadas carregadas`);
       console.log(`✅ ${listaEspera.length} pessoas na lista de espera carregadas`);
+      if (data.ultimaAtualizacao) {
+        console.log(`📅 Última atualização: ${data.ultimaAtualizacao}`);
+      }
+      return true;
+    } else if (fs.existsSync(DATA_FILE_BACKUP)) {
+      console.log('⚠️  Arquivo principal não encontrado. Tentando backup...');
+      const raw = fs.readFileSync(DATA_FILE_BACKUP, 'utf8');
+      const data = JSON.parse(raw);
+      inscricoes = Array.isArray(data.inscricoes) ? data.inscricoes : [];
+      listaEspera = Array.isArray(data.listaEspera) ? data.listaEspera : [];
+      console.log('🛟 Recuperado do backup com sucesso!');
+      console.log(`   ${inscricoes.length} confirmadas, ${listaEspera.length} em espera`);
+      // Recriar arquivo principal a partir do backup
+      saveInscricoes();
+      return true;
     } else {
-      console.log('ℹ️  Nenhuma inscrição anterior encontrada. Iniciando do zero.');
+      console.log('ℹ️  Nenhum arquivo de dados encontrado. Iniciando do zero.');
+      inscricoes = [];
+      listaEspera = [];
+      // Criar arquivo inicial vazio
+      saveInscricoes();
+      return true;
     }
   } catch (error) {
-    console.error('❌ Erro ao carregar inscrições:', error.message);
+    console.error('❌ ERRO ao carregar inscrições:', error.message);
+    console.error('Stack:', error.stack);
+    // Tentar recuperar do backup
+    try {
+      if (fs.existsSync(DATA_FILE_BACKUP)) {
+        console.log('🔄 Tentando recuperar do backup...');
+        const raw = fs.readFileSync(DATA_FILE_BACKUP, 'utf8');
+        const data = JSON.parse(raw);
+        inscricoes = Array.isArray(data.inscricoes) ? data.inscricoes : [];
+        listaEspera = Array.isArray(data.listaEspera) ? data.listaEspera : [];
+        console.log('✅ Dados recuperados do backup!');
+        console.log(`   ${inscricoes.length} confirmadas, ${listaEspera.length} em espera`);
+        return true;
+      }
+    } catch (backupError) {
+      console.error('❌ Falha ao recuperar backup:', backupError.message);
+    }
+    // Em último caso, iniciar vazio
+    console.log('⚠️  Iniciando com dados vazios por segurança');
+    inscricoes = [];
+    listaEspera = [];
+    return false;
   }
 }
 
 // Salvar inscrições no arquivo
 function saveInscricoes() {
   try {
+    // Verificação de integridade dos dados
+    if (!Array.isArray(inscricoes)) {
+      console.error('❌ ERRO: inscricoes não é um array! Tentando recuperar...');
+      inscricoes = [];
+    }
+    if (!Array.isArray(listaEspera)) {
+      console.error('❌ ERRO: listaEspera não é um array! Tentando recuperar...');
+      listaEspera = [];
+    }
+
+    const timestamp = new Date().toISOString();
     const data = {
       inscricoes,
       listaEspera,
-      ultimaAtualizacao: new Date().toISOString(),
+      ultimaAtualizacao: timestamp,
+      totalInscricoes: inscricoes.length,
+      totalListaEspera: listaEspera.length,
+      versao: '1.0',
     };
-    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-    console.log('💾 Inscrições salvas no arquivo');
+    
+    const json = JSON.stringify(data, null, 2);
+    
+    // Verificar se o diretório existe antes de salvar
+    const dir = path.dirname(DATA_FILE);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+      console.log(`📁 Diretório recriado: ${dir}`);
+    }
+    
+    // Tentar salvar arquivo principal
+    fs.writeFileSync(DATA_FILE, json, 'utf8');
+    console.log(`💾 Inscrições salvas em ${DATA_FILE}`);
+    console.log(`   ✅ ${inscricoes.length} confirmadas, ${listaEspera.length} em espera`);
+    console.log(`   📅 ${timestamp}`);
+    
+    // Criar backup de segurança
+    try { 
+      fs.writeFileSync(DATA_FILE_BACKUP, json, 'utf8');
+      console.log('   ✅ Backup criado com sucesso');
+    } catch(backupError) {
+      console.error('   ⚠️  Aviso: Não foi possível criar backup:', backupError.message);
+    }
+    
+    return true;
   } catch (error) {
-    console.error('❌ Erro ao salvar inscrições:', error.message);
+    console.error('❌ ERRO CRÍTICO ao salvar inscrições:', error.message);
+    console.error('   Arquivo:', DATA_FILE);
+    console.error('   Stack:', error.stack);
+    console.error('   Dados: inscricoes.length =', inscricoes?.length, ', listaEspera.length =', listaEspera?.length);
+    return false;
   }
 }
 
@@ -81,135 +182,13 @@ function saveInscricoes() {
 loadInscricoes();
 
 // ========================================
-// CONFIGURAÇÃO GOOGLE SHEETS
+// GOOGLE SHEETS DESABILITADO
 // ========================================
-
-let SHEETS_ENABLED = false;
-let SHEETS_MODE = 'disabled';
-let sheets = null;
-const SHEET_TABS = ['Inscrições Confirmadas', 'Lista de Espera'];
-const SHEET_HEADERS = ['Numero','Nome','Email','WhatsApp','Cidade','Newsletter','Data/Hora','Status'];
-
-try {
-  const scopes = ['https://www.googleapis.com/auth/spreadsheets'];
-  const credPath = path.join(__dirname, 'credentials.json');
-  const hasFile = fs.existsSync(credPath);
-  const b64 = process.env.GOOGLE_CREDENTIALS_BASE64;
-
-  if (b64) {
-    // Credenciais via variável de ambiente (base64 do JSON da conta de serviço)
-    try {
-      const jsonStr = Buffer.from(b64, 'base64').toString('utf8');
-      const credentials = JSON.parse(jsonStr);
-      const auth = new google.auth.GoogleAuth({ credentials, scopes });
-      sheets = google.sheets({ version: 'v4', auth });
-      SHEETS_ENABLED = true;
-      SHEETS_MODE = 'env';
-      console.log('✅ Google Sheets habilitado (credenciais via variável)');
-    } catch (e) {
-      console.warn('⚠️  GOOGLE_CREDENTIALS_BASE64 inválido (não é JSON válido). Sheets desabilitado.');
-      SHEETS_ENABLED = false;
-      SHEETS_MODE = 'disabled';
-    }
-  } else if (hasFile) {
-    // Credenciais via arquivo local credentials.json
-    const auth = new google.auth.GoogleAuth({ keyFile: credPath, scopes });
-    sheets = google.sheets({ version: 'v4', auth });
-    SHEETS_ENABLED = true;
-    SHEETS_MODE = 'file';
-    console.log('✅ Google Sheets habilitado (credentials.json encontrado)');
-  } else {
-    console.log('ℹ️  Google Sheets desabilitado: sem credentials.json e sem GOOGLE_CREDENTIALS_BASE64');
-  }
-} catch (err) {
-  console.error('❌ Erro ao configurar Google Sheets:', err.message);
-  SHEETS_ENABLED = false;
-  SHEETS_MODE = 'disabled';
-}
-
-async function ensureSheetSetup() {
-  try {
-    if (!SHEETS_ENABLED) return;
-    if (!CONFIG.GOOGLE_SHEET_ID) {
-      console.warn('⚠️  GOOGLE_SHEET_ID não definido; não é possível preparar a planilha');
-      return;
-    }
-
-    const meta = await sheets.spreadsheets.get({
-      spreadsheetId: CONFIG.GOOGLE_SHEET_ID,
-    });
-    const existing = (meta.data.sheets || []).map(s => s.properties.title);
-
-    const requests = [];
-    for (const title of SHEET_TABS) {
-      if (!existing.includes(title)) {
-        requests.push({ addSheet: { properties: { title } } });
-      }
-    }
-    if (requests.length > 0) {
-      await sheets.spreadsheets.batchUpdate({
-        spreadsheetId: CONFIG.GOOGLE_SHEET_ID,
-        requestBody: { requests },
-      });
-      console.log('✅ Abas criadas no Google Sheets:', SHEET_TABS.filter(t => !existing.includes(t)).join(', '));
-    }
-
-    // Garantir cabeçalhos nas duas abas
-    for (const title of SHEET_TABS) {
-      await sheets.spreadsheets.values.update({
-        spreadsheetId: CONFIG.GOOGLE_SHEET_ID,
-        range: `${title}!A1:H1`,
-        valueInputOption: 'RAW',
-        resource: { values: [SHEET_HEADERS] },
-      });
-    }
-    console.log('✅ Cabeçalhos aplicados nas abas do Google Sheets');
-  } catch (err) {
-    console.error('❌ Erro ao preparar a planilha do Google Sheets:', err.message);
-  }
-}
-
-// Preparar planilha em background (não bloqueia o servidor)
-ensureSheetSetup();
-
-/**
- * Salvar inscrição no Google Sheets
- */
-async function saveToSheets(inscricao, tipo = 'confirmada') {
-  try {
-    if (!SHEETS_ENABLED) {
-      return; // Silencioso: não bloqueia fluxo caso Sheets não esteja habilitado
-    }
-    if (!CONFIG.GOOGLE_SHEET_ID) {
-      console.warn('⚠️  GOOGLE_SHEET_ID não definido; pulando salvamento no Sheets');
-      return;
-    }
-
-    const sheetName = tipo === 'confirmada' ? 'Inscrições Confirmadas' : 'Lista de Espera';
-
-    const values = [[
-      inscricao.numero || '',
-      inscricao.nome,
-      inscricao.email,
-      inscricao.telefone,
-      inscricao.cidade || '',
-      inscricao.newsletter ? 'Sim' : 'Não',
-      new Date(inscricao.dataInscricao).toLocaleString('pt-BR'),
-      tipo,
-    ]];
-
-    await sheets.spreadsheets.values.append({
-      spreadsheetId: CONFIG.GOOGLE_SHEET_ID,
-      range: `${sheetName}!A:H`,
-      valueInputOption: 'USER_ENTERED',
-      resource: { values },
-    });
-
-    console.log(`✅ Inscrição salva no Google Sheets: ${inscricao.email}`);
-  } catch (error) {
-    console.error('❌ Erro ao salvar no Google Sheets:', error.message);
-  }
-}
+// Removido por solicitação: nenhuma integração com planilha.
+const SHEETS_ENABLED = false;
+const SHEETS_MODE = 'disabled';
+async function ensureSheetSetup() { /* no-op */ }
+async function saveToSheets() { /* no-op */ }
 
 // ========================================
 // CONFIGURAÇÃO DE E-MAIL (BREVO API HTTP)
@@ -417,6 +396,59 @@ app.get('/api/status', (req, res) => {
 });
 
 /**
+ * GET /api/diagnostico - Diagnóstico do sistema (protegido)
+ */
+app.get('/api/diagnostico', (req, res) => {
+  const token = req.headers.authorization;
+  const expectedToken = `Bearer ${process.env.ADMIN_TOKEN}`;
+  
+  if (token !== expectedToken) {
+    return res.status(401).json({ success: false, error: 'Não autorizado' });
+  }
+  
+  const diagnostico = {
+    servidor: {
+      porta: PORT,
+      uptime: process.uptime(),
+      versaoNode: process.version,
+      plataforma: process.platform,
+    },
+    arquivos: {
+      diretorioDados: DATA_DIR,
+      arquivoPrincipal: DATA_FILE,
+      arquivoBackup: DATA_FILE_BACKUP,
+      principalExiste: fs.existsSync(DATA_FILE),
+      backupExiste: fs.existsSync(DATA_FILE_BACKUP),
+    },
+    dados: {
+      totalInscricoes: inscricoes.length,
+      totalListaEspera: listaEspera.length,
+      vagasDisponiveis: CONFIG.MAX_VAGAS - inscricoes.length,
+      ultimaInscricao: inscricoes.length > 0 ? inscricoes[inscricoes.length - 1].dataInscricao : null,
+    },
+    configuracao: {
+      maxVagas: CONFIG.MAX_VAGAS,
+      emailFrom: CONFIG.EMAIL_FROM,
+      temBrevoApiKey: !!BREVO_API_KEY,
+      temAdminToken: !!process.env.ADMIN_TOKEN,
+    },
+  };
+  
+  // Tentar ler tamanho dos arquivos
+  try {
+    if (fs.existsSync(DATA_FILE)) {
+      const stats = fs.statSync(DATA_FILE);
+      diagnostico.arquivos.tamanhoArquivo = stats.size;
+      diagnostico.arquivos.ultimaModificacao = stats.mtime;
+    }
+  } catch (e) {
+    diagnostico.arquivos.erroLeitura = e.message;
+  }
+  
+  res.json({ success: true, diagnostico });
+});
+
+/**
  * POST /api/inscricao - Nova inscrição
  */
 app.post('/api/inscricao', async (req, res) => {
@@ -460,8 +492,7 @@ app.post('/api/inscricao', async (req, res) => {
       // Salvar no arquivo JSON
       saveInscricoes();
 
-      // Salvar no Google Sheets
-      await saveToSheets(inscricao, 'confirmada');
+      // Google Sheets desabilitado
 
       // Enviar e-mail
       await sendConfirmationEmail(inscricao, 'confirmada');
@@ -481,8 +512,7 @@ app.post('/api/inscricao', async (req, res) => {
       // Salvar no arquivo JSON
       saveInscricoes();
 
-      // Salvar no Google Sheets
-      await saveToSheets(inscricao, 'lista_espera');
+      // Google Sheets desabilitado
 
       // Enviar e-mail
       await sendConfirmationEmail(inscricao, 'lista_espera');
@@ -653,43 +683,65 @@ app.get('/api/email-config', (req, res) => {
   res.json({ success: true, email: cfg });
 });
 
-/**
- * POST /api/sheets-setup - Força criação de abas/cabeçalhos (protegido)
- */
-app.post('/api/sheets-setup', async (req, res) => {
-  const token = req.headers.authorization;
-  const expectedToken = `Bearer ${process.env.ADMIN_TOKEN}`;
-  if (token !== expectedToken) {
-    return res.status(401).json({ success: false, error: 'Não autorizado' });
-  }
-  try {
-    await ensureSheetSetup();
-    return res.json({ success: true });
-  } catch (error) {
-    return res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-/**
- * GET /api/sheets-status - Retorna status do Google Sheets (protegido)
- */
-app.get('/api/sheets-status', async (req, res) => {
-  const token = req.headers.authorization;
-  const expectedToken = `Bearer ${process.env.ADMIN_TOKEN}`;
-  if (token !== expectedToken) {
-    return res.status(401).json({ success: false, error: 'Não autorizado' });
-  }
-  return res.json({
-    success: true,
-    sheets: {
-      enabled: SHEETS_ENABLED,
-      mode: SHEETS_MODE,
-      sheetId: CONFIG.GOOGLE_SHEET_ID || null,
-    }
-  });
-});
+// Endpoints de Google Sheets removidos
 
 // (Diagnóstico Brevo removido em produção)
+
+// ========================================
+// ROTA DE DIAGNÓSTICO DO SISTEMA
+// ========================================
+
+app.get('/api/diagnostico', (req, res) => {
+  try {
+    const diagnostico = {
+      timestamp: new Date().toISOString(),
+      sistema: {
+        nodeVersion: process.version,
+        platform: process.platform,
+        uptime: Math.floor(process.uptime()),
+        memoria: {
+          total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024) + ' MB',
+          usado: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + ' MB',
+        }
+      },
+      arquivos: {
+        dataDir: DATA_DIR,
+        dataFile: DATA_FILE,
+        dataFileBackup: DATA_FILE_BACKUP,
+        dataFileExiste: fs.existsSync(DATA_FILE),
+        backupExiste: fs.existsSync(DATA_FILE_BACKUP),
+      },
+      dados: {
+        totalInscricoes: inscricoes.length,
+        totalListaEspera: listaEspera.length,
+        vagasDisponiveis: CONFIG.MAX_VAGAS - inscricoes.length,
+        inscricoesArray: Array.isArray(inscricoes),
+        listaEsperaArray: Array.isArray(listaEspera),
+      }
+    };
+
+    // Tentar ler timestamp do arquivo
+    if (fs.existsSync(DATA_FILE)) {
+      try {
+        const stats = fs.statSync(DATA_FILE);
+        const fileData = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+        diagnostico.arquivos.ultimaModificacao = stats.mtime.toISOString();
+        diagnostico.arquivos.tamanho = stats.size + ' bytes';
+        diagnostico.arquivos.ultimaAtualizacaoNoArquivo = fileData.ultimaAtualizacao;
+      } catch (e) {
+        diagnostico.arquivos.erroLeitura = e.message;
+      }
+    }
+
+    res.json({ success: true, diagnostico });
+  } catch (error) {
+    res.status(500).json({ 
+      success: false, 
+      erro: error.message,
+      stack: error.stack 
+    });
+  }
+});
 
 // ========================================
 // LANDING PAGE & DASHBOARD ADMINISTRATIVO
@@ -712,5 +764,46 @@ app.get('/', (req, res) => {
 
 app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+
+// ========================================
+// SALVAMENTO AUTOMÁTICO PERIÓDICO
+// ========================================
+
+// Salvar automaticamente a cada 5 minutos como medida de segurança
+setInterval(() => {
+  console.log('🔄 Salvamento automático periódico...');
+  saveInscricoes();
+}, 5 * 60 * 1000); // 5 minutos
+
+// ========================================
+// START SERVER
+// ========================================
+
+app.listen(PORT, () => {
+  console.log('');
+  console.log('='.repeat(50));
+  console.log(`🚀 Servidor iniciado na porta ${PORT}`);
+  console.log(`📂 Diretório de dados: ${DATA_DIR}`);
+  console.log(`💾 Arquivo principal: ${DATA_FILE}`);
+  console.log(`🔗 Health check: /api/status`);
+  console.log(`🎛️  Admin: /admin`);
+  console.log('='.repeat(50));
+  console.log('');
+  
+  // Autosave periódico a cada 2 minutos (proteção adicional)
+  setInterval(() => {
+    try { 
+      const resultado = saveInscricoes();
+      if (!resultado) {
+        console.error('⚠️  Falha no autosave periódico!');
+      }
+    } catch (err) {
+      console.error('❌ Erro no autosave:', err.message);
+    }
+  }, 120000); // 2 minutos
+  
+  console.log('⏰ Autosave periódico ativado (a cada 2 minutos)');
+  console.log('');
 });
 

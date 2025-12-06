@@ -1,6 +1,6 @@
 # Backend – Wagner Borges Curitiba
 
-API de inscrições com fila de espera, envio de e-mail (Brevo) e log opcional no Google Sheets.
+API de inscrições com fila de espera e envio de e-mail (Brevo). Google Sheets foi removido.
 
 ## Requisitos
 - Node.js >= 18
@@ -11,10 +11,7 @@ API de inscrições com fila de espera, envio de e-mail (Brevo) e log opcional n
 - `ADMIN_TOKEN`: Token para acessar endpoints protegidos (ex.: `wagner2026koi`)
 - `EMAIL_FROM`: Remetente dos e-mails (ex.: `contato@koieditora.com.br`)
 - `BREVO_API_KEY`: Chave da Brevo (formato `xkeysib-...`)
-- `GOOGLE_SHEET_ID`: ID da planilha (opcional; usado quando Sheets habilitado)
-- `GOOGLE_CREDENTIALS_BASE64`: Base64 do `credentials.json` da conta de serviço (opcional)
-
-Observação: Se `GOOGLE_CREDENTIALS_BASE64` estiver inválido ou ausente, o log no Sheets é desabilitado automaticamente.
+Observação: Integração com Google Sheets removida por decisão do projeto.
 
 ## Instalação e Execução
 ```powershell
@@ -23,28 +20,52 @@ npm install
 npm start  # roda node server.js
 ```
 
+### ⚠️ Persistência de Dados (IMPORTANTE!)
+
+**PROBLEMA IDENTIFICADO:** Inscrições desapareciam após reinicializações do servidor.
+
+**CORREÇÕES IMPLEMENTADAS:**
+- ✅ Sistema de backup automático (`inscricoes.json` + `inscricoes.backup.json`)
+- ✅ Autosave periódico a cada 2 minutos
+- ✅ Recuperação automática em caso de falha
+- ✅ Logs detalhados de todas as operações
+- ✅ Rota de diagnóstico: `GET /api/diagnostico`
+
+**Para evitar perda de dados no Render:**
+1. **Configure um Persistent Disk (RECOMENDADO):**
+   - Render → seu serviço → Storage → Add Disk
+   - Tamanho: 1–5 GB (suficiente)
+   - Mount Path: `/var/data/inscricoes`
+   - Adicione variável de ambiente: `DATA_DIR=/var/data/inscricoes`
+   - Redeploy
+
+2. **OU use um banco de dados:**
+   - MongoDB Atlas (gratuito)
+   - PostgreSQL no Render
+   - Firebase Firestore
+
+**Para testar localmente:**
+```powershell
+# Execute o script de teste
+.\test-persistencia.ps1
+```
+
+📖 **Leia o guia completo:** `PERSISTENCIA-DADOS.md`
+
 ## Deploy (Render)
 - Start Command: `node server.js`
 - Health Check Path: `/api/status` (ou `/`)
 - Runtime: Node 18 ou 20
 - Environment:
   - Defina `BREVO_API_KEY`, `EMAIL_FROM`, `ADMIN_TOKEN`
-  - Opcional: `GOOGLE_SHEET_ID` e `GOOGLE_CREDENTIALS_BASE64`
+  - Opcional: `EMAIL_SENDER_NAME`, `DATA_DIR`
 
 ### Acesso rápido
 - Admin dashboard: `https://wagner-borges-curitiba.onrender.com/admin`
 - API status: `https://wagner-borges-curitiba.onrender.com/api/status`
 
-## Geração do Base64 para Google Credentials
-```powershell
-$credPath = "D:\Wagner\backend\credentials.json"
-if (-not (Test-Path -Path $credPath)) { Write-Error "Arquivo não encontrado: $credPath"; return }
-$bytes = [IO.File]::ReadAllBytes($credPath)
-$b64 = [Convert]::ToBase64String($bytes)
-$b64 | Set-Clipboard
-"Base64 copiado (tamanho: $($b64.Length))"
-```
-Cole o conteúdo em `GOOGLE_CREDENTIALS_BASE64` nas env vars do Render.
+## E-mail (Brevo)
+Use `BREVO_API_KEY` (chave transacional `xkeysib-...`), `EMAIL_FROM` e opcionalmente `EMAIL_SENDER_NAME`.
 
 ## Endpoints
 - Públicos:
@@ -55,8 +76,7 @@ Cole o conteúdo em `GOOGLE_CREDENTIALS_BASE64` nas env vars do Render.
   - `POST /api/cancelar`: cancela e promove da espera
   - `GET /api/email-config`: status do e-mail
   - `POST /api/test-email`: envia e-mail de teste via Brevo
-  - `GET /api/sheets-status`: status do Google Sheets
-  - `POST /api/sheets-setup`: cria abas/cabeçalhos na planilha
+  - (Endpoints de Google Sheets removidos)
 
 ## Testes rápidos (PowerShell)
 ```powershell
@@ -86,8 +106,8 @@ Invoke-RestMethod -Method POST -Uri "https://wagner-borges-curitiba.onrender.com
 - Confirme Start Command = `node server.js` e Runtime Node 18/20.
 - Verifique logs completos: se houver stack/erro, corrija a causa (porta em uso, falta de env var, etc.).
 
-**Sheets inválido**
-- Se `GOOGLE_CREDENTIALS_BASE64` for inválido, o app segue rodando com Sheets desabilitado. Gere o base64 com o script acima e redeploy.
+**Sheets removido**
+- A integração com planilha do Google foi desativada para simplificar o deploy.
 
 **Brevo 401 (Key not found)**
 - Use a chave de API transacional (formato `xkeysib-...`) no `BREVO_API_KEY`.

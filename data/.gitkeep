@@ -1,0 +1,2 @@
+# Este arquivo garante que o diretório data/ seja criado no repositório
+# Os arquivos .json dentro dele são ignorados (.gitignore)
